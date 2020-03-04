@@ -14,7 +14,7 @@ import (
 	"golang.org/x/net/html"
 )
 
-var rootURL string = "godoc.org"
+var rootURL string = "southerncrossbritannia.com"
 
 type Node struct {
 	url      string
