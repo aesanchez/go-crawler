@@ -140,11 +140,10 @@ func validateURL(s string) (res string) {
 		log.Fatal(err)
 	}
 	u.Host = strings.TrimPrefix(u.Host, "www.")
-	// ignore mailto, external links, empty strings and rootURL
-	if u.Scheme == "mailto" ||
+	// ignore invalid scheme, external links, empty strings and rootURL
+	if (u.Scheme != "" && u.Scheme != "https" && u.Scheme != "http") ||
 		(u.Host != "" && u.Host != rootURL) ||
 		s == "" || s == "/" {
-		// fmt.Println("  Ignorando", u.Host, s)
 		return ""
 	}
 	res = u.Path
@@ -152,6 +151,6 @@ func validateURL(s string) (res string) {
 		res = "/" + res //format to be consistent
 	}
 	res = strings.TrimSuffix(res, "/")
-	// fmt.Println("-->", res)
+	// fmt.Println("\t-->", res)
 	return res
 }
