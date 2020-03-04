@@ -24,6 +24,7 @@ type Node struct {
 var sitemap Node
 var siteLinks = map[string]struct{}{}
 var mutexLinks = &sync.Mutex{}
+var routinesCreated = 0
 
 func main() {
 	start := time.Now()
@@ -31,8 +32,9 @@ func main() {
 	master()
 
 	fmt.Println("\nSitemap of", rootURL, ":")
-	printSitemap()
+	// printSitemap()
 	fmt.Println("Number of links:", len(siteLinks))
+	fmt.Println("Go routines created:", routinesCreated)
 	fmt.Println("Time elapsed:", time.Since(start))
 }
 
@@ -42,39 +44,39 @@ func master() {
 	siteLinks = make(map[string]struct{})
 	siteLinks[sitemap.url] = struct{}{}
 
-	numWorkers := 200 //static
-	workQueue := make(chan *Node, numWorkers)
+	workQueue := make(chan *Node, 10000)
 	doneQueue := make(chan *Node, 10000) //buffered
 
-	for i := 0; i < numWorkers; i++ {
-		go worker(workQueue, doneQueue)
-	}
 	//add the rootURL as the first portion of work to be done
-	workQueue <- &sitemap
 	workLeft := 1
+	routinesCreated++
+	workQueue <- &sitemap
+	go worker(workQueue, doneQueue)
+
+	routinesIDLE := 0
+
 	for workLeft > 0 {
 		doneNode := <-doneQueue
 		workLeft--
+		routinesIDLE++
+
 		for child := range (*doneNode).children {
 			workLeft++
-			// fmt.Println(workLeft)
 			workQueue <- child
+			if routinesIDLE == 0 {
+				routinesCreated++
+				go worker(workQueue, doneQueue)
+			} else {
+				routinesIDLE--
+			}
+			// fmt.Println(workLeft)
 		}
 	}
-
-	//burn them them all
-	for i := 0; i < numWorkers; i++ {
-		workQueue <- nil
-	}
+	close(workQueue)
 }
 
 func worker(work chan *Node, done chan *Node) {
-	for {
-		node := <-work
-		if node == nil {
-			return
-		}
-		// fmt.Println(node.url)
+	for node := range work {
 		buildSitemap(*node)
 		done <- node // now with children
 	}
@@ -122,7 +124,6 @@ func getLinksFromURL(URI string) map[string]struct{} {
 						links[a.Val] = struct{}{}
 					}
 					mutexLinks.Unlock()
-
 				}
 			}
 		}
