@@ -1,0 +1,17 @@
+We'd like you to write a simple web crawler in Go.
+The crawler should be limited to one domain - so when you start with https://monzo.com/,
+it would crawl all pages within monzo.com, but not follow external links, for example to the Facebook and Twitter accounts.
+Given a URL, it should print a simple site map, showing the links between pages.
+Ideally, write it as you would a production piece of code. Bonus points for tests and making it as fast as possible!
+This means that we care less about a fancy UI and more about how your program is structured,
+the trade-offs you've made, what behaviour the program exhibits etc..
+
+Cuando lo hice en aquel entonces este fueron mis numeros:
+Base: http://matiaspan.me
+Processed 3 URLs in 4 seconds
+-----------------------------
+Base: https://monzo.com
+Processed 466 URLs in 8 seconds
+-----------------------------
+Base: https://godoc.org
+Processed 5839 URLs in 52 seconds
