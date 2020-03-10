@@ -14,7 +14,7 @@ import (
 	"golang.org/x/net/html"
 )
 
-var rootURL string = "southerncrossbritannia.com"
+var rootURL string = "godoc.org"
 
 type Node struct {
 	url      string
@@ -24,9 +24,7 @@ type Node struct {
 var sitemap Node
 var siteLinks = map[string]struct{}{}
 var mutexLinks = &sync.Mutex{}
-var mutexRunning = &sync.Mutex{}
-var routinesRunning = 0
-var mutexLast = &sync.Mutex{} //ToDo: semaphore or waiting gruops
+var wg sync.WaitGroup
 
 func main() {
 	start := time.Now()
@@ -35,37 +33,60 @@ func main() {
 	siteLinks = make(map[string]struct{})
 	siteLinks[sitemap.url] = struct{}{}
 
-	mutexLast.Lock()
-	routinesRunning = 1
+	wg.Add(1)
 	buildSitemap(sitemap)
-	mutexLast.Lock()
+	wg.Wait()
+
 	fmt.Println("\nSitemap of", rootURL, ":")
 	printSitemap()
 	fmt.Println("Number of links:", len(siteLinks))
 	fmt.Println("Time elapsed:", time.Since(start))
 }
 
-func buildSitemap(n Node) {
+func buildSitemap(node Node) {
 	// fmt.Println("\nIniciando analisis de", n.url)
-	links := getLinksFromURL(n.url)
-	for l := range links {
-		newNode := Node{url: l}
-		newNode.children = make(map[*Node]struct{})
-		n.children[&newNode] = struct{}{}
-		mutexRunning.Lock()
-		routinesRunning++
-		fmt.Println("+", routinesRunning)
-		mutexRunning.Unlock()
-		go buildSitemap(newNode)
+	str := getHTMLFromURL(node.url)
+	doc, err := html.Parse(strings.NewReader(str))
+	if err != nil {
+		log.Fatal(err)
 	}
-	// leave
-	mutexRunning.Lock()
-	routinesRunning--
-	if routinesRunning == 0 {
-		mutexLast.Unlock()
+
+	// recursive path through the HTML nodes tree
+	var rec func(*html.Node)
+	rec = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == "a" {
+			for _, a := range n.Attr {
+				if a.Key != "href" {
+					continue
+				}
+				a.Val = validateURL(a.Val)
+				if a.Val == "" {
+					continue
+				}
+				mutexLinks.Lock()
+				_, exists := siteLinks[a.Val]
+				if !exists {
+					siteLinks[a.Val] = struct{}{} //update
+					mutexLinks.Unlock()
+
+					newNode := Node{url: a.Val, children: make(map[*Node]struct{})}
+					node.children[&newNode] = struct{}{}
+
+					wg.Add(1)
+					go buildSitemap(newNode)
+				} else {
+					mutexLinks.Unlock()
+				}
+
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			rec(c)
+		}
 	}
-	fmt.Println("-", routinesRunning)
-	mutexRunning.Unlock()
+	rec(doc)
+
+	wg.Done()
 }
 
 func getHTMLFromURL(URI string) string {
@@ -79,42 +100,6 @@ func getHTMLFromURL(URI string) string {
 		log.Fatal(err)
 	}
 	return string(str)
-}
-
-func getLinksFromURL(URI string) map[string]struct{} {
-	links := map[string]struct{}{}
-	str := getHTMLFromURL(URI)
-	// recursive path through the HTML nodes tree
-	var rec func(*html.Node)
-	rec = func(n *html.Node) {
-		if n.Type == html.ElementNode && n.Data == "a" {
-			for _, a := range n.Attr {
-				if a.Key == "href" {
-					a.Val = validateURL(a.Val)
-					if a.Val == "" {
-						continue
-					}
-					mutexLinks.Lock()
-					if _, ok := siteLinks[a.Val]; !ok { //check if it was processed before
-						siteLinks[a.Val] = struct{}{} //update
-						links[a.Val] = struct{}{}
-					}
-					mutexLinks.Unlock()
-
-				}
-			}
-		}
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			rec(c)
-		}
-	}
-	doc, err := html.Parse(strings.NewReader(str))
-	if err != nil {
-		log.Fatal(err)
-	}
-	rec(doc)
-
-	return links
 }
 
 func printSitemap() {
